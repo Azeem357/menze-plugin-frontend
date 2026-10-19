@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #F5F7FA;
+  font-family: 'Inter', sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@theme {
+  --color-navy: #002060;
+  --color-navy-light: #1F4E79;
+  --color-gold: #C9A84C;
+  --color-gold-light: #FFF2CC;
+  --color-success: #375623;
+  --color-warning: #7F6000;
+  --color-danger: #C00000;
+}
+
+:root {
+  --navy: #002060;
+  --navy-light: #1F4E79;
+  --gold: #C9A84C;
+  --success: #375623;
+  --warning: #7F6000;
+  --danger: #C00000;
+}
