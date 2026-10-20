@@ -9,15 +9,10 @@ import DashboardPage from './pages/DashboardPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 // @ts-ignore -- this page is JavaScript and does not provide a TypeScript declaration.
 import SuggestionsPage from './pages/SuggestionsPage'
+// @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
+import FinancialMetricsPage from './pages/Financialpage'
 
 // Placeholder pages (build these next)
-const FinancialPage = () => (
-  <div className="p-6">
-    <h2 className="text-xl font-bold text-navy">
-      Financial Metrics — Coming Soon
-    </h2>
-  </div>
-)
 const PredictionsPage = () => (
   <div className="p-6">
     <h2 className="text-xl font-bold text-navy">
@@ -59,7 +54,11 @@ const App = () => {
           />
           <Route
             path="/financial"
-            element={<FinancialPage />}
+            element={<FinancialMetricsPage showTopbar={false} />}
+          />
+          <Route
+            path="/financials"
+            element={<FinancialMetricsPage showTopbar={false} />}
           />
           <Route
             path="/predictions"

@@ -152,3 +152,39 @@ export const firstInsight = (data, keys = ['insights', 'insight', 'alerts', 'ale
   }
   return null
 }
+
+/* ---------- financial-page normalisers ---------- */
+
+/** campaigns: [{ name, channel, roas, profit }] */
+export const normaliseCampaigns = (raw) =>
+  (Array.isArray(raw) ? raw : []).map((c, i) => ({
+    name: String(pick(c, ['name', 'campaign', 'title'], `Campaign ${i + 1}`)),
+    channel: pick(c, ['channel', 'platform', 'source', 'network']),
+    roas: num(pick(c, ['roas', 'value'], 0)),
+    profit: num(pick(c, ['profit', 'net', 'net_profit'], 0)),
+  }))
+
+/**
+ * cohorts -> [{ label, size, cells: [number|null per period], highlight }]
+ * Each API row may carry its numbers as:
+ *   values: [4200, 5100, …]            (aligned with `periods`)
+ *   values: { 0: 4200, 1: 5100, … }    (keyed by period)
+ *   m0, m1, m2 … / month_0, month_1 …  (flat keys)
+ * A missing / null number means "not collected yet".
+ */
+export const normaliseCohorts = (raw, periods) =>
+  (Array.isArray(raw) ? raw : []).map((r, i) => {
+    const vals = pick(r, ['values', 'months', 'retention', 'ltv'])
+    const cells = periods.map((p, j) => {
+      const v = Array.isArray(vals)
+        ? vals[j]
+        : pick(vals, [p, `m${p}`]) ?? pick(r, [`m${p}`, `month_${p}`])
+      return v == null ? null : num(v)
+    })
+    return {
+      label: String(pick(r, ['cohort', 'label', 'name', 'month'], `Cohort ${i + 1}`)),
+      size: pick(r, ['size', 'customers', 'count']),
+      cells,
+      highlight: pick(r, ['highlight', 'current']),
+    }
+  })
