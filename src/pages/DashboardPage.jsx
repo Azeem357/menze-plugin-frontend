@@ -1,170 +1,180 @@
-import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useMemo, useState } from 'react'
 import { useDashboard } from '../hooks/useDashboard'
 import Loader from '../components/common/Loader'
 import ErrorMessage from '../components/common/ErrorMessage'
 import {
-  MdInsights, MdDashboard, MdAnalytics, MdPayments, MdPsychology,
-  MdAssessment, MdSettings, MdHelpOutline, MdLogout,
-  MdCalendarToday, MdNotificationsNone, MdShoppingBag, MdAdsClick,
-  MdGroups, MdTrendingUp, MdTrendingDown, MdShowChart,
-  MdAutoAwesome, MdArrowForward, MdChat, MdWatch, MdSpa
+  MdInsights, MdHelpOutline, MdLogout, MdCalendarToday, MdNotificationsNone,
+  MdPayments, MdShoppingBag, MdAdsClick, MdGroups, MdTrendingUp, MdTrendingDown,
+  MdShowChart, MdAutoAwesome, MdArrowForward, MdChat
 } from 'react-icons/md'
 import { formatPKR, formatPct } from '../utils/formatters'
+import {
+  num, pick, fmtNum, compact, formatAxisLabel, evenIndices, getTrend,
+  normaliseItems, normaliseSeries, normaliseProducts, initials, firstInsight
+} from '../utils/dashboardAdapters'
+import { BRAND, USER, SIDE_NAV, TOP_TABS, RANGES } from '../config/navigation'
 import './DashboardPage.css'
 
-/* Set to false if your app layout already renders sidebar + top bar */
-const SHOW_CHROME = true
+/* Colour cycles for charts — extend freely, they wrap around */
+const SHARE_COLORS = ['#000d33', '#755b00', '#e6e8eb', '#4a5272', '#c9a84c', '#9aa3c7']
+const BAR_COLORS = ['#000d33', '#755b00', 'rgba(0,13,51,.6)', '#4a5272', '#c9a84c']
+const TILE_COLORS = ['#0f2a4a', '#2b2b2b', '#6f8f86', '#755b00', '#4a5272']
 
-const SIDE_NAV = [
-  { label: 'Dashboard', icon: MdDashboard, path: '/' },
-  { label: 'Analytics', icon: MdAnalytics, path: '/analytics' },
-  { label: 'Financial Metrics', icon: MdPayments, path: '/financial' },
-  { label: 'AI Predictions', icon: MdPsychology, path: '/predictions' },
-  { label: 'Reports', icon: MdAssessment, path: '/reports' },
-  { label: 'Setup', icon: MdSettings, path: '/setup' },
+/**
+ * KPI cards are described, not hand-written. Add / remove / reorder entries
+ * and the row follows. `previousKey` + `changeKeys` feed the trend badge.
+ */
+const KPI_DEFS = [
+  {
+    key: 'revenue', label: 'Revenue', icon: MdPayments, tone: 'gold',
+    valueKey: 'total_revenue', changeKeys: ['revenue_change'],
+    format: (v) => formatPKR(v),
+    note: (days) => `vs Last ${days} Days`,
+  },
+  {
+    key: 'orders', label: 'Orders', icon: MdShoppingBag, tone: 'navy',
+    valueKey: 'total_orders', changeKeys: ['orders_change'],
+    format: (v) => num(v).toLocaleString(),
+    note: () => 'Successful transactions',
+  },
+  {
+    key: 'conversion', label: 'Conversion', icon: MdAdsClick, tone: 'gold',
+    valueKey: 'avg_conversion_rate', changeKeys: ['conversion_change', 'conversion_rate_change'],
+    format: (v) => formatPct(v),
+    note: () => 'Visits to checkout',
+  },
+  {
+    key: 'visitors', label: 'Visitors', icon: MdGroups, tone: 'navy',
+    valueKey: 'total_sessions', changeKeys: ['sessions_change', 'visitors_change'],
+    format: (v) => num(v).toLocaleString(),
+    note: (days) => `Unique users · last ${days} days`,
+  },
 ]
-const TOP_TABS = [
-  { label: 'Dashboard', path: '/' },
-  { label: 'Analytics', path: '/analytics' },
-  { label: 'Financials', path: '/financial' },
-  { label: 'AI Insights', path: '/predictions' },
-]
-
-/* Chart / legend colours straight from the design tokens */
-const C = { navy: '#000d33', gold: '#755b00', grey: '#e6e8eb', navySoft: 'rgba(0,13,51,.6)' }
-
-/* ---------- sample data (used when the API doesn't send a field) ---------- */
-const SAMPLE_BARS = [40, 55, 45, 70, 60, 85, 95, 80, 75, 90]
-const SAMPLE_AXIS = ['MAY 01', 'MAY 08', 'MAY 15', 'MAY 22', 'MAY 30']
-const SAMPLE_TRAFFIC = [
-  { name: 'Direct Search', value: 45 },
-  { name: 'Social Media', value: 32 },
-  { name: 'Referral', value: 23 },
-]
-const SAMPLE_ROAS = [
-  { name: 'Facebook Ads', value: 4.2, width: 84 },
-  { name: 'Google Shopping', value: 5.8, width: 95 },
-  { name: 'Instagram Influencers', value: 2.9, width: 58 },
-]
-const SAMPLE_PRODUCTS = [
-  { name: 'Premium Leather Wallet', units: 124, revenue: 8400, bg: '#0f2a4a', icon: MdShoppingBag },
-  { name: 'Executive Chrono-V1', units: 89, revenue: 12200, bg: '#2b2b2b', icon: MdWatch },
-  { name: 'Aesthetic Skincare Kit', units: 64, revenue: 5100, bg: '#6f8f86', icon: MdSpa },
-]
-const ROAS_COLORS = [C.navy, C.gold, C.navySoft]
-const TRAFFIC_COLORS = [C.navy, C.gold, C.grey]
-
-const pkrShort = (n) => `PKR ${(Number(n) / 1000).toFixed(1).replace(/\.0$/, '')}k`
 
 /* ---------- pieces ---------- */
-const Sidebar = () => (
-  <aside className="db-sidebar">
-    <div className="db-side-top">
-      <div className="db-brand">
-        <div className="db-brand-logo"><MdInsights size={24} /></div>
+const handleNav = (onNavigate) => (e, item) => {
+  if (onNavigate) { e.preventDefault(); onNavigate(item) }
+}
+
+const Sidebar = ({ brand, items, activeKey, onNavigate, onUpgrade, onHelp, onSignOut }) => {
+  const click = handleNav(onNavigate)
+  return (
+    <aside className="db-sidebar">
+      <div className="db-side-top">
+        <div className="db-brand">
+          <div className="db-brand-logo"><MdInsights size={24} /></div>
+          <div>
+            <h1 className="db-brand-name">{brand.name}</h1>
+            <p className="db-brand-sub">{brand.tagline}</p>
+          </div>
+        </div>
+        <nav className="db-side-nav">
+          {items.map((item) => {
+            const Icon = item.icon
+            return (
+              <a
+                key={item.key}
+                href={item.href}
+                onClick={(e) => click(e, item)}
+                className={`db-side-link ${item.key === activeKey ? 'active' : ''}`}
+              >
+                {Icon && <Icon size={24} />} <span>{item.label}</span>
+              </a>
+            )
+          })}
+        </nav>
+      </div>
+
+      <div className="db-side-bottom">
+        <div className="db-upgrade">
+          <h5>Upgrade Pro</h5>
+          <p>Unlock advanced predictive models.</p>
+          <button onClick={onUpgrade}>Upgrade Now</button>
+        </div>
         <div>
-          <h1 className="db-brand-name">MENZ Analytics</h1>
-          <p className="db-brand-sub">Executive Insights</p>
+          <a href="#" className="db-side-small" onClick={(e) => { e.preventDefault(); onHelp?.() }}>
+            <MdHelpOutline size={20} /> Help Center
+          </a>
+          <a href="#" className="db-side-small danger" onClick={(e) => { e.preventDefault(); onSignOut?.() }}>
+            <MdLogout size={20} /> Sign Out
+          </a>
         </div>
       </div>
-      <nav className="db-side-nav">
-        {SIDE_NAV.map(({ label, icon: Icon, path }) => (
-          <NavLink
-            key={label}
-            to={path}
-            end={path === '/'}
-            className={({ isActive }) => `db-side-link ${isActive ? 'active' : ''}`}
-          >
-            <Icon size={24} /> <span>{label}</span>
-          </NavLink>
-        ))}
-      </nav>
-    </div>
+    </aside>
+  )
+}
 
-    <div className="db-side-bottom">
-      <div className="db-upgrade">
-        <h5>Upgrade Pro</h5>
-        <p>Unlock advanced predictive models.</p>
-        <button>Upgrade Now</button>
+const Topbar = ({ title, tabs, activeKey, user, hasAlerts, onNavigate }) => {
+  const click = handleNav(onNavigate)
+  return (
+    <header className="db-topbar">
+      <div className="db-topbar-left">
+        <h2 className="db-page-title">{title}</h2>
+        <nav className="db-tabs">
+          {tabs.map((t) => (
+            <a
+              key={t.key}
+              href={t.href}
+              onClick={(e) => click(e, t)}
+              className={`db-tab ${t.key === activeKey ? 'active' : ''}`}
+            >
+              {t.label}
+            </a>
+          ))}
+        </nav>
       </div>
-      <div>
-        <a href="#" className="db-side-small"><MdHelpOutline size={20} /> Help Center</a>
-        <a href="#" className="db-side-small danger"><MdLogout size={20} /> Sign Out</a>
+      <div className="db-topbar-right">
+        <button className="db-round-btn" aria-label="Calendar"><MdCalendarToday size={22} /></button>
+        <button className="db-round-btn" aria-label="Notifications">
+          <MdNotificationsNone size={24} />
+          {hasAlerts && <span className="db-dot" />}
+        </button>
+        <div className="db-vline" />
+        <button className="db-admin">
+          <span>{user.name}</span>
+          {user.avatar ? <img src={user.avatar} alt="" /> : <i />}
+        </button>
       </div>
+    </header>
+  )
+}
+
+const KPI = ({ def, summary, previous, days }) => {
+  const Icon = def.icon
+  const trend = getTrend(summary, previous, def.valueKey, def.changeKeys)
+  return (
+    <div className="db-card db-kpi">
+      <div className="db-kpi-top">
+        <div className={`db-kpi-icon ${def.tone}`}><Icon size={24} /></div>
+        {trend && (
+          <span className={`db-badge ${trend.direction}`}>
+            {trend.direction === 'up' ? <MdTrendingUp size={14} /> : <MdTrendingDown size={14} />}
+            {trend.label}
+          </span>
+        )}
+      </div>
+      <p className="db-kpi-label">{def.label}</p>
+      <h3 className="db-kpi-value">{def.format(summary?.[def.valueKey])}</h3>
+      <p className="db-kpi-note">{def.note(days)}</p>
     </div>
-  </aside>
+  )
+}
+
+const Empty = ({ icon: Icon = MdShowChart, children }) => (
+  <div className="db-empty"><Icon size={32} /><p>{children}</p></div>
 )
 
-const Topbar = () => (
-  <header className="db-topbar">
-    <div className="db-topbar-left">
-      <h2 className="db-page-title">Dashboard</h2>
-      <nav className="db-tabs">
-        {TOP_TABS.map(({ label, path }) => (
-          <NavLink
-            key={label}
-            to={path}
-            end={path === '/'}
-            className={({ isActive }) => `db-tab ${isActive ? 'active' : ''}`}
-          >
-            {label}
-          </NavLink>
-        ))}
-      </nav>
-    </div>
-    <div className="db-topbar-right">
-      <button className="db-round-btn" aria-label="Calendar"><MdCalendarToday size={22} /></button>
-      <button className="db-round-btn" aria-label="Notifications">
-        <MdNotificationsNone size={24} /><span className="db-dot" />
-      </button>
-      <div className="db-vline" />
-      <button className="db-admin"><span>Exec Admin</span><i /></button>
-    </div>
-  </header>
-)
-
-const KPI = ({ icon, tone, label, value, note, trend, trendValue }) => (
-  <div className="db-card db-kpi">
-    <div className="db-kpi-top">
-      <div className={`db-kpi-icon ${tone}`}>{icon}</div>
-      <span className={`db-badge ${trend}`}>
-        {trend === 'up' ? <MdTrendingUp size={14} /> : <MdTrendingDown size={14} />} {trendValue}
-      </span>
-    </div>
-    <p className="db-kpi-label">{label}</p>
-    <h3 className="db-kpi-value">{value}</h3>
-    <p className="db-kpi-note">{note}</p>
-  </div>
-)
-
-const RevenueBars = ({ chart }) => {
-  const real = chart.length > 0
-  const vals = real
-    ? chart.map((d) => Number(d.revenue ?? d.value ?? d.total_revenue ?? 0))
-    : SAMPLE_BARS
-  const max = Math.max(...vals, 1)
-  const labels = real
-    ? chart.map((d) => String(d.date ?? d.label ?? d.day ?? ''))
-    : []
-
-  /* five axis labels, evenly picked */
-  const axis = real
-    ? Array.from({ length: 5 }, (_, i) =>
-        (labels[Math.round((i * (labels.length - 1)) / 4)] || '').slice(-5).toUpperCase())
-    : SAMPLE_AXIS
-
+const RevenueBars = ({ series }) => {
+  if (!series.length) return <Empty>No revenue recorded for this period.</Empty>
+  const max = Math.max(...series.map((p) => p.value), 1)
+  const axis = evenIndices(series.length, 5).map((i) => formatAxisLabel(series[i].label))
   return (
     <>
       <div className="db-bars">
         <div className="db-bars-ghost"><MdShowChart size={200} /></div>
-        {vals.map((v, i) => (
-          <div
-            key={i}
-            className="db-bar"
-            style={{ height: `${real ? (v / max) * 95 : v}%`, ...(vals.length > 20 && { width: 8 }) }}
-          >
-            <span className="db-bar-tip">{formatPKR(v)}</span>
+        {series.map((p, i) => (
+          <div key={i} className="db-bar" style={{ height: `${Math.max((p.value / max) * 95, 1)}%` }}>
+            <span className="db-bar-tip">{formatAxisLabel(p.label)} · {formatPKR(p.value)}</span>
           </div>
         ))}
       </div>
@@ -173,32 +183,34 @@ const RevenueBars = ({ chart }) => {
   )
 }
 
-const Donut = ({ items }) => {
-  const total = items.reduce((s, x) => s + x.value, 0) || 1
+const Donut = ({ items, total, totalLabel }) => {
+  const sum = items.reduce((s, x) => s + x.value, 0)
+  if (!items.length || !sum) return <Empty icon={MdGroups}>No traffic data yet.</Empty>
+
   let acc = 0
   const stops = items.map((it, i) => {
-    const from = (acc / total) * 100
+    const from = (acc / sum) * 100
     acc += it.value
-    return `${TRAFFIC_COLORS[i % TRAFFIC_COLORS.length]} ${from}% ${(acc / total) * 100}%`
+    return `${SHARE_COLORS[i % SHARE_COLORS.length]} ${from}% ${(acc / sum) * 100}%`
   })
   return (
     <>
       <div className="db-donut-wrap">
         <div className="db-donut" style={{ background: `conic-gradient(${stops.join(', ')})` }}>
           <div className="db-donut-center">
-            <strong>{total >= 1000 ? `${(total / 1000).toFixed(1)}K` : total}</strong>
-            <span>TOTAL VISITORS</span>
+            <strong>{compact(total ?? sum).toUpperCase()}</strong>
+            <span>{totalLabel}</span>
           </div>
         </div>
       </div>
       <div className="db-legend">
         {items.map((it, i) => (
-          <div className="db-legend-row" key={it.name}>
+          <div className="db-legend-row" key={it.name + i}>
             <span>
-              <i className="db-legend-dot" style={{ background: TRAFFIC_COLORS[i % TRAFFIC_COLORS.length] }} />
+              <i className="db-legend-dot" style={{ background: SHARE_COLORS[i % SHARE_COLORS.length] }} />
               {it.name}
             </span>
-            <b>{Math.round((it.value / total) * 100)}%</b>
+            <b>{Math.round((it.value / sum) * 100)}%</b>
           </div>
         ))}
       </div>
@@ -207,26 +219,48 @@ const Donut = ({ items }) => {
 }
 
 /* ---------- page ---------- */
-const DashboardPage = () => {
-  const [days, setDays] = useState(30)
-  const [range, setRange] = useState('Month')
+/**
+ * Props (all optional):
+ *  brand, user, sideNav, topTabs   – see config/navigation.js
+ *  showChrome                      – false if your layout already has sidebar + top bar
+ *  title                           – page heading in the top bar
+ *  initialDays                     – default date range
+ *  onNavigate(item)                – hook your router here (e.g. navigate(item.href))
+ *  onInsightAction(insight)        – "Take Action Now" click
+ *  onUpgrade / onHelp / onSignOut / onSupportClick
+ */
+const DashboardPage = ({
+  brand = BRAND, user = USER, sideNav = SIDE_NAV, topTabs = TOP_TABS,
+  showChrome = true, title = 'Dashboard', initialDays = 30,
+  onNavigate, onInsightAction, onUpgrade, onHelp, onSignOut, onSupportClick,
+}) => {
+  const [days, setDays] = useState(initialDays)
   const { data, loading, error } = useDashboard(days)
 
-  const summary = data?.summary || {}
-  const chart = data?.chart || []
+  const view = useMemo(() => {
+    const summary = data?.summary || {}
+    const previous = data?.previous_summary ?? data?.previous ?? data?.comparison?.summary ?? null
 
-  const apiTraffic = (data?.traffic_sources || []).map((t) => ({
-    name: t.source ?? t.name ?? t.channel ?? 'Other',
-    value: Number(t.sessions ?? t.value ?? t.count ?? t.percentage ?? 0),
-  }))
-  const traffic = apiTraffic.length ? apiTraffic : SAMPLE_TRAFFIC
+    const traffic = normaliseItems(data?.traffic_sources, {
+      valueKeys: ['sessions', 'value', 'count', 'visitors', 'percentage'],
+    })
+    const roas = normaliseItems(data?.roas_by_channel ?? data?.roas, {
+      valueKeys: ['roas', 'value'],
+    })
+    return {
+      summary,
+      previous,
+      series: normaliseSeries(data?.chart, { valueKeys: ['revenue', 'total_revenue', 'value'] }),
+      traffic,
+      trafficTotal: pick(summary, ['total_sessions', 'total_visitors']),
+      roas,
+      roasMax: Math.max(...roas.map((r) => r.value), 1) * 1.1,
+      products: normaliseProducts(data?.top_products),
+      insight: firstInsight(data, ['insights', 'insight', 'alerts', 'alert']),
+    }
+  }, [data])
 
-  const roasMax = 6
-  const roas = (data?.roas_by_channel || SAMPLE_ROAS).map((r) => ({
-    name: r.name ?? r.channel,
-    value: Number(r.value ?? r.roas ?? 0),
-  }))
-  const products = data?.top_products || SAMPLE_PRODUCTS
+  const insight = view.insight
 
   let body
   if (loading) {
@@ -236,20 +270,11 @@ const DashboardPage = () => {
   } else {
     body = (
       <>
-        {/* KPI row */}
+        {/* KPI row — driven by KPI_DEFS */}
         <div className="db-kpis">
-          <KPI tone="gold" icon={<MdPayments size={24} />} label="Revenue"
-            value={formatPKR(summary.total_revenue)} note={`vs Last ${days} Days`}
-            trend="up" trendValue="12.5%" />
-          <KPI tone="navy" icon={<MdShoppingBag size={24} />} label="Orders"
-            value={summary.total_orders || 0} note="Successful transactions"
-            trend="up" trendValue="8.2%" />
-          <KPI tone="gold" icon={<MdAdsClick size={24} />} label="Conversion"
-            value={formatPct(summary.avg_conversion_rate)} note="Visits to checkout"
-            trend="down" trendValue="0.4%" />
-          <KPI tone="navy" icon={<MdGroups size={24} />} label="Visitors"
-            value={(summary.total_sessions || 0).toLocaleString()} note="Unique users today"
-            trend="up" trendValue="14.1%" />
+          {KPI_DEFS.map((def) => (
+            <KPI key={def.key} def={def} summary={view.summary} previous={view.previous} days={days} />
+          ))}
         </div>
 
         {/* Revenue + traffic */}
@@ -261,26 +286,19 @@ const DashboardPage = () => {
                 <p className="db-card-sub">Daily performance tracking</p>
               </div>
               <div className="db-seg">
-                {['Week', 'Month', 'Year'].map((r) => (
-                  <button
-                    key={r}
-                    className={range === r ? 'active' : ''}
-                    onClick={() => {
-                      setRange(r)
-                      setDays(r === 'Week' ? 7 : r === 'Month' ? 30 : 365)
-                    }}
-                  >
-                    {r}
+                {RANGES.map((r) => (
+                  <button key={r.label} className={days === r.days ? 'active' : ''} onClick={() => setDays(r.days)}>
+                    {r.label}
                   </button>
                 ))}
               </div>
             </div>
-            <RevenueBars chart={chart} />
+            <RevenueBars series={view.series} />
           </div>
 
           <div className="db-card">
             <h4 className="db-card-title">Traffic Sources</h4>
-            <Donut items={traffic} />
+            <Donut items={view.traffic} total={view.trafficTotal} totalLabel="TOTAL VISITORS" />
           </div>
         </div>
 
@@ -288,41 +306,45 @@ const DashboardPage = () => {
         <div className="db-row-3">
           <div className="db-card">
             <h4 className="db-card-title">ROAS Performance</h4>
-            <div className="db-roas">
-              {roas.map((r, i) => (
-                <div key={r.name}>
-                  <div className="db-roas-head"><span>{r.name}</span><b>{r.value}x</b></div>
-                  <div className="db-track">
-                    <div className="db-fill" style={{
-                      width: `${Math.min((r.value / roasMax) * 100, 100)}%`,
-                      background: ROAS_COLORS[i % ROAS_COLORS.length],
-                    }} />
+            {view.roas.length ? (
+              <div className="db-roas">
+                {view.roas.map((r, i) => (
+                  <div key={r.name + i}>
+                    <div className="db-roas-head"><span>{r.name}</span><b>{fmtNum(r.value, 1)}x</b></div>
+                    <div className="db-track">
+                      <div className="db-fill" style={{
+                        width: `${Math.min((r.value / view.roasMax) * 100, 100)}%`,
+                        background: BAR_COLORS[i % BAR_COLORS.length],
+                      }} />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : <Empty icon={MdAdsClick}>No ad channels reporting ROAS.</Empty>}
           </div>
 
           <div className="db-card">
             <h4 className="db-card-title">Top Products</h4>
-            <div className="db-products">
-              {products.map((p) => {
-                const Icon = p.icon || MdShoppingBag
-                const revenue = p.revenue ?? p.total_revenue ?? 0
-                return (
-                  <div className="db-product" key={p.name}>
+            {view.products.length ? (
+              <div className="db-products">
+                {view.products.map((p, i) => (
+                  <div className="db-product" key={p.name + i}>
                     {p.image
                       ? <img className="db-product-img" src={p.image} alt={p.name} />
-                      : <div className="db-product-img" style={{ background: p.bg || C.navy }}><Icon size={22} /></div>}
+                      : (
+                        <div className="db-product-img" style={{ background: TILE_COLORS[i % TILE_COLORS.length] }}>
+                          {initials(p.name)}
+                        </div>
+                      )}
                     <div className="db-product-info">
                       <p className="db-product-name">{p.name}</p>
-                      <p className="db-product-units">{p.units ?? p.units_sold ?? 0} units sold</p>
+                      <p className="db-product-units">{p.units.toLocaleString()} units sold</p>
                     </div>
-                    <span className="db-product-price">{pkrShort(revenue)}</span>
+                    <span className="db-product-price">PKR {compact(p.revenue)}</span>
                   </div>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            ) : <Empty icon={MdShoppingBag}>No product sales in this period.</Empty>}
           </div>
 
           <div className="db-card db-ai">
@@ -331,14 +353,27 @@ const DashboardPage = () => {
                 <div className="db-ai-icon"><MdAutoAwesome size={22} /></div>
                 <h4>AI Insights</h4>
               </div>
-              <p className="db-ai-text">
-                <strong>Inventory Alert:</strong> Predictive models suggest a stockout for{' '}
-                <u>Leather Wallet</u> within 4 days. Restock advised immediately to avoid
-                PKR 42,000 in missed revenue.
-              </p>
-              <button className="db-ai-btn">
-                Take Action Now <MdArrowForward size={16} />
-              </button>
+              {insight ? (
+                <>
+                  <p className="db-ai-text">
+                    {insight.title && <strong>{insight.title}: </strong>}
+                    {insight.message}
+                  </p>
+                  {(insight.actionLabel || onInsightAction || insight.actionHref) && (
+                    <button
+                      className="db-ai-btn"
+                      onClick={() => {
+                        if (onInsightAction) onInsightAction(insight)
+                        else if (insight.actionHref) window.location.assign(insight.actionHref)
+                      }}
+                    >
+                      {insight.actionLabel || 'Take Action Now'} <MdArrowForward size={16} />
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="db-ai-text">No alerts right now — nothing needs your attention.</p>
+              )}
             </div>
           </div>
         </div>
@@ -348,15 +383,25 @@ const DashboardPage = () => {
 
   return (
     <div className="db-page">
-      {SHOW_CHROME && <Sidebar />}
+      {showChrome && (
+        <Sidebar
+          brand={brand} items={sideNav} activeKey="dashboard" onNavigate={onNavigate}
+          onUpgrade={onUpgrade} onHelp={onHelp} onSignOut={onSignOut}
+        />
+      )}
 
-      <main className={`db-main ${SHOW_CHROME ? '' : 'no-side'}`}>
-        {SHOW_CHROME && <Topbar />}
+      <main className={`db-main ${showChrome ? '' : 'no-side'}`}>
+        {showChrome && (
+          <Topbar
+            title={title} tabs={topTabs} activeKey="dashboard" user={user}
+            hasAlerts={!!insight} onNavigate={onNavigate}
+          />
+        )}
         <div className="db-content">{body}</div>
       </main>
 
       <div className="db-fab-wrap">
-        <button className="db-fab" aria-label="Ask AI Support">
+        <button className="db-fab" aria-label="Ask AI Support" onClick={onSupportClick}>
           <MdChat size={30} />
           <span className="db-fab-tip">Ask AI Support</span>
         </button>

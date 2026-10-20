@@ -23,7 +23,7 @@
   --sidebar-w: 260px;
   --gutter: 24px;
 
-  display: flex; width: 100%; min-height: 100vh;
+  display: flex; min-height: 100vh;
   background: var(--bg); color: var(--on-surface);
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
@@ -112,7 +112,7 @@
 .db-tab {
   height: 64px; padding: 0 4px; display: flex; align-items: center;
   background: none; border: none; border-bottom: 2px solid transparent;
-  font: inherit; font-size: 16px; font-weight: 500;
+  font: inherit; font-size: 16px; font-weight: 500; text-decoration: none;
   color: var(--on-surface-variant); cursor: pointer; transition: color .2s;
 }
 .db-tab:hover { color: var(--secondary); }
@@ -144,10 +144,14 @@
   background: linear-gradient(135deg, var(--primary-container), var(--primary));
   border: 2px solid var(--secondary);
 }
+.db-admin img {
+  width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+  border: 2px solid var(--secondary);
+}
 
 /* ---------- Content ---------- */
 .db-content {
-  width: 100%; margin: 0; padding: var(--gutter);
+  max-width: 1440px; margin: 0 auto; padding: var(--gutter);
   display: flex; flex-direction: column; gap: var(--gutter);
 }
 .db-card {
@@ -208,7 +212,7 @@
 
 .db-bars {
   position: relative; height: 320px; padding: 0 16px;
-  display: flex; align-items: flex-end; justify-content: space-between;
+  display: flex; align-items: flex-end; gap: 6px;
   overflow: hidden;
 }
 .db-bars-ghost {
@@ -216,7 +220,8 @@
   opacity: .1; pointer-events: none; color: var(--on-surface);
 }
 .db-bar {
-  position: relative; width: 32px; background: var(--primary);
+  position: relative; flex: 1 1 0; max-width: 32px; min-width: 3px; margin: 0 auto;
+  background: var(--primary);
   border-radius: 4px 4px 0 0; transition: height .5s, background .3s;
 }
 .db-bar:hover { background: var(--secondary); }
@@ -268,6 +273,7 @@
 .db-product-img {
   width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0; object-fit: cover;
   display: grid; place-items: center; color: #fff;
+  font-size: 14px; font-weight: 700; letter-spacing: .04em;
 }
 .db-product-info { flex: 1; min-width: 0; }
 .db-product-name { margin: 0; font-size: 14px; font-weight: 700; color: var(--primary); transition: color .2s; }
@@ -344,6 +350,19 @@
 @media (max-width: 560px) {
   .db-kpis { grid-template-columns: 1fr; }
   .db-content { padding: 16px; }
-  .db-bar { width: 18px; }
   .db-kpi-value { font-size: 28px; line-height: 34px; }
+}
+
+/* ---------- Empty states ---------- */
+.db-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 160px; padding: 24px 0; text-align: center;
+  color: rgba(68, 70, 80, .55);
+}
+.db-empty p { margin: 0; font-size: 14px; }
+
+/* ---------- Print ---------- */
+@media print {
+  .db-sidebar, .db-topbar, .db-fab-wrap { display: none !important; }
+  .db-main { margin-left: 0; }
 }

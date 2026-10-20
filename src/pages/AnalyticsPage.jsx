@@ -1,96 +1,68 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Loader from '../components/common/Loader'
+import ErrorMessage from '../components/common/ErrorMessage'
 import { useFunnel } from '../hooks/useFunnel'
 import {
-  MdMenu, MdCalendarToday, MdCalendarMonth, MdNotificationsNone,
-  MdDownload, MdTrendingUp, MdTrendingDown, MdArrowDownward,
-  MdArrowUpward, MdMoreVert, MdLaptopMac, MdSmartphone,
-  MdTabletMac, MdPsychology
+  MdMenu, MdCalendarToday, MdCalendarMonth, MdNotificationsNone, MdDownload,
+  MdTrendingUp, MdTrendingDown, MdArrowDownward, MdArrowUpward, MdMoreVert,
+  MdLaptopMac, MdSmartphone, MdTabletMac, MdDevicesOther, MdPsychology, MdShowChart
 } from 'react-icons/md'
+import {
+  num, pick, fmtNum, compact, formatDuration, formatAxisLabel, evenIndices,
+  normaliseFunnel, normaliseItems, normaliseSeries, firstInsight
+} from '../utils/dashboardAdapters'
+import { BRAND, USER, TOP_TABS, RANGE_OPTIONS } from '../config/navigation'
 import './AnalyticsPage.css'
 
-/* Set to false if your app layout already renders the top bar */
-const SHOW_TOPBAR = true
+const DEVICE_COLORS = ['#000d33', '#755b00', '#4a5272', '#c9a84c', '#9aa3c7']
 
-const NAV = ['Dashboard', 'Analytics', 'Financials', 'AI Insights']
-
-/* Funnel step colours: navy fading out, last step gold */
-const STEP_COLORS = ['#000d33', '#232f55', '#4a5272', '#6f7590', '#755b00']
-const STEP_TAGS = ['Sessions', 'Views', 'Adds', 'Initiated', 'Orders']
-
-/* ---------- Sample data (used when the API doesn't send a field) ---------- */
-const SAMPLE_FUNNEL = [
-  { name: 'Homepage', count: 142500 },
-  { name: 'Product Page', count: 88200 },
-  { name: 'Cart', count: 12400 },
-  { name: 'Checkout', count: 6100 },
-  { name: 'Purchase', count: 4800 },
+/**
+ * The three tiles under the funnel are described, not hand-written.
+ * Add an entry and a tile appears — it is hidden automatically when the API
+ * doesn't send that metric.
+ *
+ *  value   -> data.metrics[key]  (or data[key])
+ *  change  -> `${key}_change`    (% vs previous period, optional)
+ *  note    -> `${key}_note`      (custom caption, optional)
+ *  status  -> `${key}_status`    ('good' | 'bad', optional)
+ */
+const MINI_DEFS = [
+  { key: 'bounce_rate', label: 'Bounce Rate', format: (v) => `${fmtNum(v, 1)}%`, lowerIsBetter: true },
+  { key: 'add_to_cart_rate', label: 'Add to Cart Rate', format: (v) => `${fmtNum(v, 1)}%` },
+  { key: 'avg_session_duration', label: 'Avg. Session Duration', format: formatDuration },
 ]
-const SAMPLE_TREND = [250, 230, 240, 180, 160, 190, 140, 130, 110, 125, 90]
-const SAMPLE_REF = [260, 265, 250, 220, 230, 210, 190, 185, 170, 175, 160]
-const SAMPLE_DEVICES = [
-  { name: 'Desktop', rate: 4.8 },
-  { name: 'Mobile', rate: 2.9 },
-  { name: 'Tablet', rate: 3.1 },
+
+const DEVICE_ICONS = [
+  ['desktop', MdLaptopMac], ['laptop', MdLaptopMac],
+  ['mobile', MdSmartphone], ['phone', MdSmartphone],
+  ['tablet', MdTabletMac],
 ]
-const SAMPLE_SOURCES = [
-  { name: 'Organic', rate: 5.2 },
-  { name: 'Paid Ads', rate: 3.8 },
-  { name: 'Email', rate: 2.1 },
-  { name: 'Direct', rate: 4.5 },
-  { name: 'Social', rate: 1.8 },
-]
-const DEVICE_ICONS = { desktop: MdLaptopMac, mobile: MdSmartphone, tablet: MdTabletMac }
-const DEVICE_COLORS = ['#000d33', '#755b00', '#4a5272']
+const deviceIcon = (name) =>
+  (DEVICE_ICONS.find(([k]) => String(name).toLowerCase().includes(k)) || [])[1] || MdDevicesOther
 
-/* ---------- helpers ---------- */
-const compact = (n) => {
-  n = Number(n) || 0
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 1 : 1)}k`
-  return String(n)
-}
+/* ---------- pieces ---------- */
+const Empty = ({ icon: Icon = MdShowChart, children }) => (
+  <div className="an-empty"><Icon size={32} /><p>{children}</p></div>
+)
 
-/* Accept whatever shape the API returns for funnel steps */
-const normaliseFunnel = (raw) => {
-  if (!Array.isArray(raw) || !raw.length) return SAMPLE_FUNNEL
-  return raw.map((s, i) => ({
-    name: s.name ?? s.stage ?? s.step ?? s.label ?? `Step ${i + 1}`,
-    count: Number(s.count ?? s.value ?? s.users ?? s.sessions ?? 0),
-  }))
-}
+const TrendChart = ({ series }) => {
+  if (series.length < 2) return <div className="an-trend-body"><Empty>Not enough data to draw a trend yet.</Empty></div>
 
-/* Turn a list of y-values (0 = bottom of chart) into an SVG path */
-const toPath = (ys, close = false) => {
-  const step = 1000 / Math.max(ys.length - 1, 1)
-  const d = ys.map((y, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${y}`).join(' ')
-  return close ? `${d} V300 H0 Z` : d
-}
+  const hasRef = series.some((p) => p.previous != null)
+  const all = series.flatMap((p) => [p.value, p.previous]).filter((v) => v != null)
+  const min = Math.min(...all)
+  const range = Math.max(...all) - min || 1
+  const y = (v) => 300 - ((v - min) / range) * 240 - 30
+  const x = (i) => (i * 1000) / (series.length - 1)
 
-/* Convert a series of real values into SVG y coordinates (300 = bottom) */
-const scaleToY = (vals) => {
-  const max = Math.max(...vals, 0.0001)
-  const min = Math.min(...vals, 0)
-  return vals.map((v) => 300 - ((v - min) / (max - min || 1)) * 240 - 20)
-}
+  const line = (get) =>
+    series
+      .map((p, i) => (get(p) == null ? null : `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(get(p)).toFixed(1)}`))
+      .filter(Boolean)
+      .join(' ')
+  const mainPath = line((p) => p.value)
 
-/* ---------- small pieces ---------- */
-const TrendChart = ({ trend }) => {
-  const real = Array.isArray(trend) && trend.length > 1
-  const main = real
-    ? scaleToY(trend.map((t) => Number(t.rate ?? t.value ?? t.conversion_rate ?? 0)))
-    : SAMPLE_TREND
-  const ref = real && trend[0]?.previous != null
-    ? scaleToY(trend.map((t) => Number(t.previous ?? 0)))
-    : real ? main.map((y) => y + 30) : SAMPLE_REF
-
-  const labelCount = 6
-  const labels = real
-    ? Array.from({ length: labelCount }, (_, i) => {
-        const idx = Math.round((i * (trend.length - 1)) / (labelCount - 1))
-        return String(trend[idx].date ?? trend[idx].label ?? '').slice(-5).toUpperCase()
-      })
-    : ['OCT 01', 'OCT 07', 'OCT 14', 'OCT 21', 'OCT 28', 'OCT 31']
+  const labels = evenIndices(series.length, 6).map((i) => formatAxisLabel(series[i].label))
 
   return (
     <div className="an-trend-body">
@@ -101,108 +73,175 @@ const TrendChart = ({ trend }) => {
             <stop offset="100%" stopColor="rgba(0,32,96,0)" />
           </linearGradient>
         </defs>
-        {[0, 100, 200, 300].map((y) => (
-          <line key={y} className="an-grid-line" x1="0" x2="1000" y1={y} y2={y} />
+        {[0, 100, 200, 300].map((g) => (
+          <line key={g} className="an-grid-line" x1="0" x2="1000" y1={g} y2={g} />
         ))}
-        <path d={toPath(main, true)} fill="url(#anGrad)" />
-        <path className="an-line-main" d={toPath(main)} />
-        <path className="an-line-ref" d={toPath(ref)} />
+        <path d={`${mainPath} V300 H0 Z`} fill="url(#anGrad)" />
+        <path className="an-line-main" d={mainPath} />
+        {hasRef && <path className="an-line-ref" d={line((p) => p.previous)} />}
       </svg>
-      <div className="an-x-labels">
-        {labels.map((l, i) => <span key={i}>{l}</span>)}
+
+      {/* invisible hover columns -> native tooltip per data point */}
+      <div className="an-hover-cols">
+        {series.map((p, i) => (
+          <div
+            key={i}
+            title={`${formatAxisLabel(p.label)}: ${fmtNum(p.value)}%${p.previous != null ? ` (prev ${fmtNum(p.previous)}%)` : ''}`}
+          />
+        ))}
       </div>
+
+      <div className="an-x-labels">{labels.map((l, i) => <span key={i}>{l}</span>)}</div>
     </div>
   )
 }
 
-const Funnel = ({ steps }) => (
-  <div className="an-funnel">
-    {steps.map((s, i) => {
-      const last = i === steps.length - 1
-      const prev = steps[i - 1]
-      const drop = prev && prev.count
-        ? Math.round((1 - s.count / prev.count) * 100)
-        : null
-      const completion = prev && prev.count ? Math.round((s.count / prev.count) * 100) : null
+const Funnel = ({ steps }) => {
+  if (!steps.length) return <Empty>No funnel data for this period.</Empty>
+  const n = steps.length
+  const first = steps[0].count || 1
 
-      return (
-        <div className="an-funnel-step" key={s.name + i}>
-          <div
-            className="an-funnel-shape"
-            style={{ background: STEP_COLORS[Math.min(i, STEP_COLORS.length - 1)] }}
-          >
-            <div>
-              <p className="an-funnel-tag">{STEP_TAGS[i] ?? 'Step'}</p>
-              <p className="an-funnel-val">{compact(s.count)}</p>
+  return (
+    <div className="an-funnel">
+      {steps.map((s, i) => {
+        const last = i === n - 1
+        const prev = steps[i - 1]
+        const ratio = prev?.count ? s.count / prev.count : null
+        const drop = ratio == null ? null : Math.round((1 - ratio) * 100)
+        const alpha = n <= 2 ? 1 : 1 - (i / (n - 1)) * 0.5
+        const background = last && n > 1 ? '#755b00' : `rgba(0, 13, 51, ${alpha.toFixed(2)})`
+        const tag = s.tag ?? (i === 0 ? 'Total' : `${Math.round((s.count / first) * 100)}% of total`)
+
+        return (
+          <div className="an-funnel-step" key={s.name + i}>
+            <div className="an-funnel-shape" style={{ background }}>
+              <div>
+                <p className="an-funnel-tag">{tag}</p>
+                <p className="an-funnel-val">{compact(s.count)}</p>
+              </div>
             </div>
+            <p className={`an-funnel-name ${last && n > 1 ? 'gold' : ''}`}>{s.name}</p>
+            {ratio != null && last && (
+              <p className="an-funnel-note good">{Math.round(ratio * 100)}% Completion</p>
+            )}
+            {ratio != null && !last && (
+              <p className={`an-funnel-note ${drop < 0 ? 'good' : ''}`}>
+                {drop < 0 ? `+${-drop}%` : `-${drop}%`} {drop < 0 ? 'gain' : 'drop'}
+              </p>
+            )}
           </div>
-          <p className={`an-funnel-name ${last ? 'gold' : ''}`}>{s.name}</p>
-          {last && completion != null && (
-            <p className="an-funnel-note good">{completion}% Completion</p>
-          )}
-          {!last && drop != null && (
-            <p className="an-funnel-note">-{drop}% drop</p>
-          )}
-        </div>
-      )
-    })}
-  </div>
-)
+        )
+      })}
+    </div>
+  )
+}
 
-const MiniStat = ({ label, value, note, bad, up }) => (
-  <div className="an-mini">
-    <p className="an-mini-label">{label}</p>
-    <p className="an-mini-val">{value}</p>
-    <p className={`an-mini-note ${bad ? 'bad' : ''}`}>
-      {up ? <MdArrowUpward size={12} /> : <MdArrowDownward size={12} />} {note}
-    </p>
-  </div>
-)
+const MiniStat = ({ def, metrics }) => {
+  const raw = pick(metrics, [def.key])
+  if (raw == null) return null
+
+  const change = pick(metrics, [`${def.key}_change`])
+  const c = change == null ? null : num(change)
+  const customNote = pick(metrics, [`${def.key}_note`])
+  const note = customNote ?? (c == null ? null : `${fmtNum(Math.abs(c), 1)}% ${c < 0 ? 'lower' : 'higher'}`)
+
+  const statusKey = pick(metrics, [`${def.key}_status`])
+  const good = statusKey
+    ? statusKey === 'good'
+    : c == null ? true : def.lowerIsBetter ? c <= 0 : c >= 0
+
+  return (
+    <div className="an-mini">
+      <p className="an-mini-label">{def.label}</p>
+      <p className="an-mini-val">{def.format(raw)}</p>
+      {note && (
+        <p className={`an-mini-note ${good ? '' : 'bad'}`}>
+          {c != null && (c < 0 ? <MdArrowDownward size={12} /> : <MdArrowUpward size={12} />)} {note}
+        </p>
+      )}
+    </div>
+  )
+}
 
 /* ---------- page ---------- */
-const AnalyticsPage = () => {
-  const [days, setDays] = useState(30)
-  const { data, loading } = useFunnel(days)
+/**
+ * Props (all optional):
+ *  brand, user, topTabs     – see config/navigation.js
+ *  showTopbar               – false if your layout already has a top bar
+ *  initialDays              – default date range
+ *  onNavigate(item)         – hook your router here (e.g. navigate(item.href))
+ *  onMenuClick              – hamburger button
+ *  onExport                 – defaults to window.print() (save as PDF)
+ *  onAnomalyAction(anomaly) – "View Recommendation" click
+ */
+const AnalyticsPage = ({
+  brand = BRAND, user = USER, topTabs = TOP_TABS,
+  showTopbar = true, initialDays = 30,
+  onNavigate, onMenuClick, onExport, onAnomalyAction,
+}) => {
+  const [days, setDays] = useState(initialDays)
+  const { data, loading, error } = useFunnel(days)
 
-  const steps = normaliseFunnel(data?.funnel)
-  const devices = (data?.devices || SAMPLE_DEVICES).map((d) => ({
-    name: d.name ?? d.device,
-    rate: Number(d.rate ?? d.conversion_rate ?? 0),
-  }))
-  const sources = (data?.sources || SAMPLE_SOURCES).map((s) => ({
-    name: s.name ?? s.source,
-    rate: Number(s.rate ?? s.conversion_rate ?? 0),
-  }))
-  const devMax = Math.max(...devices.map((d) => d.rate), 1)
-  const srcMax = Math.max(...sources.map((s) => s.rate), 1)
+  const view = useMemo(() => {
+    const steps = normaliseFunnel(data?.funnel)
+    const computed = steps.length > 1 && steps[0].count
+      ? (steps[steps.length - 1].count / steps[0].count) * 100
+      : null
+    const overallRaw = pick(data, ['overall_conversion'])
+    const overall = overallRaw != null ? num(overallRaw) : computed
 
-  const overall = data?.overall_conversion ?? (
-    steps[0]?.count ? ((steps[steps.length - 1].count / steps[0].count) * 100).toFixed(2) : '0'
-  )
+    const prevOverall = pick(data, ['previous_overall_conversion'])
+    const delta = pick(data, ['overall_conversion_change'])
+      ?? (prevOverall != null && overall != null ? overall - num(prevOverall) : null)
+
+    return {
+      steps,
+      overall,
+      delta: delta == null ? null : num(delta),
+      deltaLabel: pick(data, ['comparison_label'], 'vs previous period'),
+      series: normaliseSeries(data?.trend, {
+        valueKeys: ['rate', 'conversion_rate', 'value'],
+      }),
+      devices: normaliseItems(data?.devices, { nameKeys: ['name', 'device'], valueKeys: ['rate', 'conversion_rate', 'value'] }),
+      sources: normaliseItems(data?.sources, { nameKeys: ['name', 'source', 'channel'], valueKeys: ['rate', 'conversion_rate', 'value'] }),
+      metrics: data?.metrics ?? data ?? {},
+      anomaly: firstInsight(data, ['anomalies', 'anomaly', 'insights', 'insight']),
+    }
+  }, [data])
+
+  const devMax = Math.max(...view.devices.map((d) => d.value), 1)
+  const srcMax = Math.max(...view.sources.map((s) => s.value), 1)
+  const miniStats = MINI_DEFS.filter((d) => pick(view.metrics, [d.key]) != null)
+
+  const click = (e, item) => { if (onNavigate) { e.preventDefault(); onNavigate(item) } }
 
   return (
     <div className="an-page">
-      {SHOW_TOPBAR && (
+      {showTopbar && (
         <header className="an-topbar">
           <div className="an-topbar-left">
-            <button className="an-icon-btn" aria-label="Menu"><MdMenu size={24} /></button>
-            <h1 className="an-brand">MENZ Analytics</h1>
+            <button className="an-icon-btn" aria-label="Menu" onClick={onMenuClick}><MdMenu size={24} /></button>
+            <h1 className="an-brand">{brand.name}</h1>
           </div>
           <nav className="an-nav">
-            {NAV.map((n) => (
-              <a key={n} href="#" className={n === 'Analytics' ? 'active' : ''}>{n}</a>
+            {topTabs.map((t) => (
+              <a key={t.key} href={t.href} onClick={(e) => click(e, t)} className={t.key === 'analytics' ? 'active' : ''}>
+                {t.label}
+              </a>
             ))}
           </nav>
           <div className="an-topbar-right">
             <button className="an-icon-btn" aria-label="Calendar"><MdCalendarToday size={20} /></button>
             <button className="an-icon-btn" aria-label="Notifications"><MdNotificationsNone size={22} /></button>
-            <div className="an-avatar" />
+            {user.avatar
+              ? <img className="an-avatar" src={user.avatar} alt={user.name} />
+              : <div className="an-avatar" title={user.name} />}
           </div>
         </header>
       )}
 
       <main className="an-main">
-        {/* Page heading + controls */}
+        {/* Heading + controls */}
         <div className="an-head">
           <div>
             <div className="an-crumbs">
@@ -215,13 +254,10 @@ const AnalyticsPage = () => {
             <label className="an-range">
               <MdCalendarMonth size={20} />
               <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
-                <option value={7}>Last 7 Days</option>
-                <option value={30}>Last 30 Days</option>
-                <option value={90}>Last 90 Days</option>
-                <option value={365}>Last 365 Days</option>
+                {RANGE_OPTIONS.map((o) => <option key={o.days} value={o.days}>{o.label}</option>)}
               </select>
             </label>
-            <button className="an-btn-gold" onClick={() => window.print()}>
+            <button className="an-btn-gold" onClick={() => (onExport ? onExport(data) : window.print())}>
               <MdDownload size={18} /> Export PDF
             </button>
           </div>
@@ -229,6 +265,8 @@ const AnalyticsPage = () => {
 
         {loading ? (
           <div className="an-state"><Loader /></div>
+        ) : error ? (
+          <div className="an-state"><ErrorMessage message={error} /></div>
         ) : (
           <>
             {/* Conversion rate trend */}
@@ -238,28 +276,35 @@ const AnalyticsPage = () => {
                   <h3 className="an-card-title">Conversion Rate Trend</h3>
                   <p className="an-card-sub">Daily aggregate across all platforms</p>
                 </div>
-                <div className="an-trend-kpi">
-                  <strong>{overall}%</strong>
-                  <span className="an-delta">
-                    <MdTrendingUp size={16} /> +0.12% vs LY
-                  </span>
-                </div>
+                {view.overall != null && (
+                  <div className="an-trend-kpi">
+                    <strong>{fmtNum(view.overall)}%</strong>
+                    {view.delta != null && (
+                      <span className={`an-delta ${view.delta < 0 ? 'down' : ''}`}>
+                        {view.delta < 0 ? <MdTrendingDown size={16} /> : <MdTrendingUp size={16} />}
+                        {view.delta >= 0 ? '+' : '-'}{fmtNum(Math.abs(view.delta))}% {view.deltaLabel}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
-              <TrendChart trend={data?.trend} />
+              <TrendChart series={view.series} />
             </section>
 
             {/* Funnel */}
             <section className="an-card an-card-pad">
               <h3 className="an-card-title">Purchase Funnel Breakdown</h3>
-              <Funnel steps={steps} />
-              <div className="an-mini-grid">
-                <MiniStat label="Bounce Rate" value="32.4%" note="Improving (4% lower)" />
-                <MiniStat label="Add to Cart Rate" value="8.7%" note="Critically Low" bad />
-                <MiniStat label="Avg. Session Duration" value="4m 12s" note="High Engagement" up />
-              </div>
-              <p style={{ textAlign: 'center', margin: '20px 0 0', fontSize: 14, color: '#444650' }}>
-                Overall conversion rate: <strong style={{ color: '#000d33' }}>{overall}%</strong>
-              </p>
+              <Funnel steps={view.steps} />
+              {miniStats.length > 0 && (
+                <div className="an-mini-grid">
+                  {miniStats.map((d) => <MiniStat key={d.key} def={d} metrics={view.metrics} />)}
+                </div>
+              )}
+              {view.overall != null && (
+                <p className="an-overall">
+                  Overall conversion rate: <strong>{fmtNum(view.overall)}%</strong>
+                </p>
+              )}
             </section>
 
             {/* Device + traffic */}
@@ -272,28 +317,27 @@ const AnalyticsPage = () => {
                   </div>
                   <MdMoreVert className="an-more" size={22} />
                 </div>
-                <div className="an-bars">
-                  {devices.map((d, i) => {
-                    const Icon = DEVICE_ICONS[String(d.name).toLowerCase()] || MdLaptopMac
-                    return (
-                      <div key={d.name}>
-                        <div className="an-bar-row-head">
-                          <span><Icon size={20} color="#000d33" /> {d.name}</span>
-                          <span>{d.rate}%</span>
-                        </div>
-                        <div className="an-track">
-                          <div
-                            className="an-fill"
-                            style={{
-                              width: `${(d.rate / devMax) * 100}%`,
+                {view.devices.length ? (
+                  <div className="an-bars">
+                    {view.devices.map((d, i) => {
+                      const Icon = deviceIcon(d.name)
+                      return (
+                        <div key={d.name + i}>
+                          <div className="an-bar-row-head">
+                            <span><Icon size={20} color="#000d33" /> {d.name}</span>
+                            <span>{fmtNum(d.value)}%</span>
+                          </div>
+                          <div className="an-track">
+                            <div className="an-fill" style={{
+                              width: `${(d.value / devMax) * 100}%`,
                               background: DEVICE_COLORS[i % DEVICE_COLORS.length],
-                            }}
-                          />
+                            }} />
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                ) : <Empty icon={MdLaptopMac}>No device breakdown available.</Empty>}
               </section>
 
               <section className="an-card an-card-pad">
@@ -304,40 +348,50 @@ const AnalyticsPage = () => {
                   </div>
                   <MdMoreVert className="an-more" size={22} />
                 </div>
-                <div className="an-cols">
-                  {sources.map((s) => (
-                    <div className="an-col" key={s.name}>
-                      <div className="an-col-bar-wrap">
-                        <div className="an-col-bar" style={{ height: `${(s.rate / srcMax) * 85}%` }}>
-                          <span className="an-col-tip">{s.rate}%</span>
+                {view.sources.length ? (
+                  <div className="an-cols">
+                    {view.sources.map((s, i) => (
+                      <div className="an-col" key={s.name + i}>
+                        <div className="an-col-bar-wrap">
+                          <div className="an-col-bar" style={{ height: `${Math.max((s.value / srcMax) * 85, 2)}%` }}>
+                            <span className="an-col-tip">{fmtNum(s.value)}%</span>
+                          </div>
                         </div>
+                        <span className="an-col-label">{s.name}</span>
                       </div>
-                      <span className="an-col-label">{s.name}</span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : <Empty icon={MdShowChart}>No traffic source data available.</Empty>}
               </section>
             </div>
 
-            {/* AI anomaly banner */}
-            <div className="an-ai">
-              <div className="an-ai-icon"><MdPsychology size={32} /></div>
-              <div className="an-ai-body">
-                <h4>AI-Detected Anomalies</h4>
-                <p>
-                  We noticed a <b>12% decrease</b> in Mobile Checkout completion rates following
-                  the October 21st update. This correlates with increased latency on the payment
-                  confirmation step. We recommend reviewing the mobile payment API response times.
-                </p>
+            {/* AI anomaly banner — only when the API reports one */}
+            {view.anomaly && (
+              <div className="an-ai">
+                <div className="an-ai-icon"><MdPsychology size={32} /></div>
+                <div className="an-ai-body">
+                  <h4>{view.anomaly.title || 'AI-Detected Anomalies'}</h4>
+                  <p>{view.anomaly.message}</p>
+                </div>
+                {(view.anomaly.actionLabel || onAnomalyAction || view.anomaly.actionHref) && (
+                  <button
+                    className="an-ai-btn"
+                    onClick={() => {
+                      if (onAnomalyAction) onAnomalyAction(view.anomaly)
+                      else if (view.anomaly.actionHref) window.location.assign(view.anomaly.actionHref)
+                    }}
+                  >
+                    {view.anomaly.actionLabel || 'View Recommendation'}
+                  </button>
+                )}
               </div>
-              <button className="an-ai-btn">View Recommendation</button>
-            </div>
+            )}
           </>
         )}
       </main>
 
       <footer className="an-footer">
-        <p>© {new Date().getFullYear()} MENZ Analytics. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} {brand.name}. All rights reserved.</p>
         <div className="an-footer-links">
           <a href="#">Privacy Policy</a>
           <a href="#">Documentation</a>

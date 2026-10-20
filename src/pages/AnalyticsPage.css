@@ -56,7 +56,7 @@
 
 .an-topbar-right { display: flex; align-items: center; gap: 12px; }
 .an-avatar {
-  width: 32px; height: 32px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
   background: linear-gradient(135deg, var(--an-navy), var(--an-primary));
   border: 2px solid var(--an-border);
 }
@@ -280,4 +280,29 @@
     clip-path: none; border-radius: 8px;
   }
   .an-cols { gap: 10px; padding: 0; }
+}
+
+/* ---------- Dynamic additions ---------- */
+.an-hover-cols {
+  position: absolute; left: 32px; right: 32px; top: 32px; bottom: 48px;
+  display: flex;
+}
+.an-hover-cols > div { flex: 1; cursor: crosshair; }
+.an-hover-cols > div:hover { background: rgba(0, 32, 96, .05); }
+
+.an-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 160px; padding: 24px 0; text-align: center;
+  color: rgba(68, 70, 80, .55);
+}
+.an-empty p { margin: 0; font-size: 14px; }
+.an-trend-body > .an-empty { height: 100%; }
+
+.an-overall { margin: 20px 0 0; text-align: center; font-size: 14px; color: var(--an-text-var); }
+.an-overall strong { color: var(--an-primary); }
+
+/* ---------- Print (Export PDF) ---------- */
+@media print {
+  .an-topbar, .an-head-actions, .an-footer { display: none !important; }
+  .an-card { box-shadow: none; break-inside: avoid; }
 }
