@@ -1,13 +1,13 @@
 import axiosInstance from './axiosInstance'
 
 export const getCampaigns = () =>
-  axiosInstance.get('/campaigns/')
+  axiosInstance.get('/api/campaigns/')
 
 export const createCampaign = (data) =>
-  axiosInstance.post('/campaigns/', data)
+  axiosInstance.post('/api/campaigns/', data)
 
 export const updateCampaign = (id, data) =>
-  axiosInstance.put(`/campaigns/${id}/`, data)
+  axiosInstance.put(`/api/campaigns/${id}/`, data)
 
 export const deleteCampaign = (id) =>
-  axiosInstance.delete(`/campaigns/${id}/`)
+  axiosInstance.delete(`/api/campaigns/${id}/`)
