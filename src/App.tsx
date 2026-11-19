@@ -11,15 +11,10 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import SuggestionsPage from './pages/SuggestionsPage'
 // @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
 import FinancialMetricsPage from './pages/Financialpage'
+// @ts-ignore -- this page is JavaScript and does not provide a TypeScript declaration.
+import PredictionsPage from './pages/PredictionsPage'
 
 // Placeholder pages (build these next)
-const PredictionsPage = () => (
-  <div className="p-6">
-    <h2 className="text-xl font-bold text-navy">
-      AI Predictions — Coming Soon
-    </h2>
-  </div>
-)
 const CampaignsPage = () => (
   <div className="p-6">
     <h2 className="text-xl font-bold text-navy">
@@ -62,7 +57,7 @@ const App = () => {
           />
           <Route
             path="/predictions"
-            element={<PredictionsPage />}
+            element={<PredictionsPage showTopbar={false} />}
           />
           <Route
             path="/suggestions"

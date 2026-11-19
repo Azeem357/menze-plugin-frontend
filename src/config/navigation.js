@@ -6,8 +6,8 @@
    `href` values are placeholders: point them at your real routes.
    ============================================================ */
 import {
-  MdDashboard, MdAnalytics, MdPayments, MdPsychology,
-  MdAssessment, MdSettings
+  MdCampaign, MdDashboard, MdAnalytics, MdLightbulb, MdPayments,
+  MdPsychology, MdAssessment, MdSettings
 } from 'react-icons/md'
 
 export const BRAND = { name: 'MENZ Analytics', tagline: 'Executive Insights' }
@@ -19,9 +19,11 @@ export const SIDE_NAV = [
   { key: 'dashboard', label: 'Dashboard', href: '/', icon: MdDashboard },
   { key: 'analytics', label: 'Analytics', href: '/analytics', icon: MdAnalytics },
   { key: 'financials', label: 'Financial Metrics', href: '/financials', icon: MdPayments },
-  { key: 'ai', label: 'AI Predictions', href: '/ai-predictions', icon: MdPsychology },
+  { key: 'ai', label: 'AI Predictions', href: '/predictions', icon: MdPsychology },
+  { key: 'suggestions', label: 'AI Suggestions', href: '/suggestions', icon: MdLightbulb },
+  { key: 'campaigns', label: 'Campaigns', href: '/campaigns', icon: MdCampaign },
   { key: 'reports', label: 'Reports', href: '/reports', icon: MdAssessment },
-  { key: 'setup', label: 'Setup', href: '/setup', icon: MdSettings },
+  { key: 'setup', label: 'Plugin Setup', href: '/setup', icon: MdSettings },
 ]
 
 export const TOP_TABS = [
