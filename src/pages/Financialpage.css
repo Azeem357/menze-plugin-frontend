@@ -65,6 +65,7 @@
 }
 .fm-title { margin: 0; font-size: 28px; line-height: 36px; font-weight: 600; color: var(--primary); }
 .fm-subtitle { margin: 4px 0 0; font-size: 14px; color: var(--on-surface-variant); }
+.fm-demo-note { margin: 8px 0 0; color: var(--secondary); font-size: 12px; font-weight: 700; }
 .fm-head-actions { display: flex; gap: 8px; }
 
 .fm-btn-outline, .fm-btn-gold {
@@ -91,7 +92,7 @@
 .fm-card-sub { margin: 0; font-size: 14px; color: var(--on-surface-variant); }
 
 /* ---------- Hero KPIs ---------- */
-.fm-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 32px; }
+.fm-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin-bottom: 32px; }
 .fm-kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .fm-kpi-icon { padding: 8px; border-radius: 8px; display: grid; place-items: center; }
 .fm-kpi-icon.gold { background: rgba(254, 217, 119, .3); color: var(--secondary); }
@@ -215,13 +216,14 @@
 /* ---------- Responsive ---------- */
 @media (max-width: 1024px) {
   .fm-span-8, .fm-span-4 { grid-column: span 12; }
-  .fm-kpis { grid-template-columns: 1fr; }
+  .fm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 768px) {
   .fm-nav { display: none; }
   .fm-card { padding: 20px; }
   .fm-main { padding: 24px 16px; }
   .fm-target-line { display: none; }
+  .fm-kpis { grid-template-columns: 1fr; }
 }
 
 /* ---------- Print (Export PDF) ---------- */

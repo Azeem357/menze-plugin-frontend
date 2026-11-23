@@ -4,7 +4,7 @@ import ErrorMessage from '../components/common/ErrorMessage'
 import { useFinancials } from '../hooks/usefinancials'
 import {
   MdCalendarToday, MdNotificationsNone, MdDownload, MdAdd, MdTrendingUp,
-  MdPayments, MdGroup, MdInfoOutline, MdShowChart
+  MdPayments, MdGroup, MdInfoOutline, MdShowChart, MdPercent
 } from 'react-icons/md'
 import { formatPKR } from '../utils/formatters'
 import {
@@ -52,6 +52,11 @@ const KPI_DEFS = [
       kind: 'text',
       text: `Average ${d?.ltv_months ? `${d.ltv_months}-month ` : ''}value per customer across all channels.`,
     }),
+  },
+  {
+    key: 'conversion', label: 'Conversion Rate', icon: MdPercent, tone: 'navy',
+    valueKey: 'avg_conversion_rate', changeKeys: ['conversion_rate_change'],
+    format: (v) => `${fmtNum(v, 1)}%`,
   },
 ]
 
@@ -341,6 +346,11 @@ const FinancialPage = ({
           <div>
             <h2 className="fm-title">Financial Metrics</h2>
             {subtitle && <p className="fm-subtitle">{subtitle}</p>}
+            {data?.demo && (
+              <p className="fm-demo-note" role="status">
+                Demo data only. Sample values are not saved to the backend.
+              </p>
+            )}
           </div>
           <div className="fm-head-actions">
             <button className="fm-btn-outline" onClick={() => (onExport ? onExport(data) : window.print())}>
