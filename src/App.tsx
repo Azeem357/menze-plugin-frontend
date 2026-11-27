@@ -1,27 +1,22 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
-// @ts-ignore -- Layout is a JavaScript component without a TypeScript declaration.
+// @ts-expect-error -- Layout is a JavaScript component without a TypeScript declaration.
 import Layout from './components/layout/Layout'
-// @ts-ignore -- this page is JavaScript and does not provide a TypeScript declaration.
+// @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
 import DashboardPage from './pages/DashboardPage'
-// @ts-ignore -- this page is JavaScript and does not provide a TypeScript declaration.
+// @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
 import AnalyticsPage from './pages/AnalyticsPage'
-// @ts-ignore -- this page is JavaScript and does not provide a TypeScript declaration.
+// @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
 import SuggestionsPage from './pages/SuggestionsPage'
 // @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
 import FinancialMetricsPage from './pages/Financialpage'
-// @ts-ignore -- this page is JavaScript and does not provide a TypeScript declaration.
+// @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
 import PredictionsPage from './pages/PredictionsPage'
+// @ts-expect-error -- this page is JavaScript and does not provide a TypeScript declaration.
+import CampaignsPage from './pages/CampaignsPage'
 
 // Placeholder pages (build these next)
-const CampaignsPage = () => (
-  <div className="p-6">
-    <h2 className="text-xl font-bold text-navy">
-      Campaigns — Coming Soon
-    </h2>
-  </div>
-)
 const ReportsPage = () => (
   <div className="p-6">
     <h2 className="text-xl font-bold text-navy">
