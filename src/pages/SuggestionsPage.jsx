@@ -11,13 +11,34 @@ import { MdCheckCircle, MdLightbulb } from 'react-icons/md'
 const SuggestionsPage = () => {
   const [filter, setFilter] = useState({})
   const {
-    suggestions, stats, loading, handleMarkDone
+    suggestions, stats, loading, error, refresh, handleMarkDone
   } = useSuggestions(filter)
 
   return (
     <>
-      <Header title="AI Suggestions" />
+      <Header title="Analytics Suggestions" />
       <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm text-gray-500">
+            Suggestions are generated from recent store and campaign activity using transparent rules.
+          </p>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-navy text-white disabled:opacity-60"
+          >
+            {loading ? 'Refreshing…' : 'Refresh suggestions'}
+          </button>
+        </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            Could not refresh suggestions: {error}
+          </div>
+        )}
 
         {/* Stats Row */}
         {stats && (
@@ -131,7 +152,7 @@ const SuggestionsPage = () => {
                       bg-white rounded-xl shadow-sm p-6
                       border-l-4 border border-gray-100
                       ${getPriorityColor(s.priority)}
-                      ${s.is_acted_on ? 'opacity-60' : ''}
+                      ${s.is_acted_on || !s.is_active ? 'opacity-60' : ''}
                     `}
                   >
                     {/* Header */}
@@ -164,6 +185,11 @@ const SuggestionsPage = () => {
                           Done
                         </span>
                       )}
+                      {!s.is_active && !s.is_acted_on && (
+                        <span className="text-gray-500 text-sm">
+                          No longer active
+                        </span>
+                      )}
                     </div>
 
                     {/* Content */}
@@ -191,7 +217,7 @@ const SuggestionsPage = () => {
                           s.created_at
                         ).toLocaleDateString()}
                       </p>
-                      {!s.is_acted_on && (
+                      {!s.is_acted_on && s.is_active && (
                         <button
                           onClick={() =>
                             handleMarkDone(s.id)

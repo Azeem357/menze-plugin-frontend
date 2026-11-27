@@ -22,6 +22,7 @@ const STATUS = {
 }
 const MODEL_STATE = {
   active: { title: 'Active Intelligence Enabled', dot: 'green' },
+  baseline: { title: 'Recent Sales Baseline', dot: 'amber' },
   training: { title: 'Model Training In Progress', dot: 'amber' },
   offline: { title: 'Model Offline', dot: 'red' },
 }
@@ -284,9 +285,15 @@ const PredictionsPage = ({
     URL.revokeObjectURL(url)
   }
 
-  const sub = subtitle ?? (view.months
-    ? `Machine learning forecasts based on your last ${view.months} months of financial data.`
-    : 'Machine learning forecasts based on your historical financial data.')
+  const sub = subtitle ?? (
+    view.model.status === 'baseline'
+      ? 'A transparent revenue estimate based on actual orders from the last 7 completed days.'
+      : view.model.status === 'offline'
+        ? 'A forecast will be available after completed purchase events are recorded.'
+        : view.months
+          ? `Forecasts based on your last ${view.months} months of financial data.`
+          : 'Revenue forecasts based on historical store data.'
+  )
 
   let body
   if (loading) {
@@ -351,7 +358,7 @@ const PredictionsPage = ({
       <main className="pr-main">
         <header className="pr-head">
           <div>
-            <h1 className="pr-title">AI Predictions</h1>
+            <h1 className="pr-title">Sales Forecast</h1>
             <p className="pr-subtitle">{sub}</p>
           </div>
           <div className="pr-head-actions">

@@ -10,3 +10,6 @@ export const markActedOn = (id) =>
 
 export const getSuggestionStats = () =>
   axiosInstance.get('/api/suggestions/stats/')
+
+export const generateSuggestions = () =>
+  axiosInstance.post('/api/suggestions/generate/')

@@ -19,7 +19,7 @@ export const SIDE_NAV = [
   { key: 'dashboard', label: 'Dashboard', href: '/', icon: MdDashboard },
   { key: 'analytics', label: 'Analytics', href: '/analytics', icon: MdAnalytics },
   { key: 'financials', label: 'Financial Metrics', href: '/financials', icon: MdPayments },
-  { key: 'ai', label: 'AI Predictions', href: '/predictions', icon: MdPsychology },
+  { key: 'ai', label: 'Sales Forecast', href: '/predictions', icon: MdPsychology },
   { key: 'suggestions', label: 'AI Suggestions', href: '/suggestions', icon: MdLightbulb },
   { key: 'campaigns', label: 'Campaigns', href: '/campaigns', icon: MdCampaign },
   { key: 'reports', label: 'Reports', href: '/reports', icon: MdAssessment },
