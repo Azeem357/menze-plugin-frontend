@@ -13,3 +13,11 @@ export const getSuggestionStats = () =>
 
 export const generateSuggestions = () =>
   axiosInstance.post('/api/suggestions/generate/')
+
+export const getProductSales = (period = '7d') =>
+  axiosInstance.get('/api/analytics/product-sales/', {
+    params: { period }
+  })
+
+export const syncStoreOrders = () =>
+  axiosInstance.post('/api/sync/orders/')

@@ -1,18 +1,89 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Header from '../components/layout/Header'
 import Loader from '../components/common/Loader'
 import { useSuggestions } from '../hooks/useSuggestions'
 import {
+  getProductSales,
+  syncStoreOrders
+} from '../api/suggestionsApi'
+import {
+  formatPKR,
   getPriorityColor,
-  getPriorityBadge
+  getPriorityBadge,
 } from '../utils/formatters'
 import { MdCheckCircle, MdLightbulb } from 'react-icons/md'
 
 const SuggestionsPage = () => {
   const [filter, setFilter] = useState({})
+  const [salesSuggestionId, setSalesSuggestionId] = useState(null)
+  const [salesPeriod, setSalesPeriod] = useState('7d')
+  const [salesData, setSalesData] = useState(null)
+  const [salesLoading, setSalesLoading] = useState(false)
+  const [salesError, setSalesError] = useState('')
+  const [salesSyncing, setSalesSyncing] = useState(false)
+  const [salesSyncMessage, setSalesSyncMessage] = useState('')
   const {
     suggestions, stats, loading, error, refresh, handleMarkDone
   } = useSuggestions(filter)
+
+  useEffect(() => {
+    if (!salesSuggestionId) return undefined
+
+    let cancelled = false
+    const fetchSales = async () => {
+      try {
+        setSalesLoading(true)
+        setSalesError('')
+        const response = await getProductSales(salesPeriod)
+        if (!cancelled) setSalesData(response.data)
+      } catch (err) {
+        if (!cancelled) {
+          setSalesError(
+            err.response?.data?.error
+            || err.message
+            || 'Could not load product sales.'
+          )
+        }
+      } finally {
+        if (!cancelled) setSalesLoading(false)
+      }
+    }
+
+    fetchSales()
+    return () => {
+      cancelled = true
+    }
+  }, [salesSuggestionId, salesPeriod])
+
+  const toggleProductSales = (suggestionId) => {
+    setSalesSuggestionId((current) => (
+      current === suggestionId ? null : suggestionId
+    ))
+    setSalesPeriod('7d')
+    setSalesData(null)
+    setSalesError('')
+    setSalesSyncMessage('')
+  }
+
+  const handleSyncStoreOrders = async () => {
+    try {
+      setSalesSyncing(true)
+      setSalesError('')
+      setSalesSyncMessage('')
+      await syncStoreOrders()
+      const response = await getProductSales(salesPeriod)
+      setSalesData(response.data)
+      setSalesSyncMessage('Store orders synced; product sales are up to date.')
+    } catch (err) {
+      setSalesError(
+        err.response?.data?.error
+        || err.message
+        || 'Could not sync store orders.'
+      )
+    } finally {
+      setSalesSyncing(false)
+    }
+  }
 
   return (
     <>
@@ -217,24 +288,149 @@ const SuggestionsPage = () => {
                           s.created_at
                         ).toLocaleDateString()}
                       </p>
-                      {!s.is_acted_on && s.is_active && (
-                        <button
-                          onClick={() =>
-                            handleMarkDone(s.id)
-                          }
-                          className="
-                            flex items-center gap-2
-                            bg-navy text-white
-                            px-4 py-2 rounded-lg
-                            text-sm hover:bg-navy-light
-                            transition-colors
-                          "
-                        >
-                          <MdCheckCircle size={16} />
-                          Mark as Done
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {s.suggestion_type === 'internal' && (
+                          <button
+                            type="button"
+                            aria-expanded={salesSuggestionId === s.id}
+                            onClick={() => toggleProductSales(s.id)}
+                            className="
+                              px-4 py-2 rounded-lg text-sm font-medium
+                              border border-navy text-navy
+                              hover:bg-gray-50 transition-colors
+                            "
+                          >
+                            {salesSuggestionId === s.id
+                              ? 'Hide product sales'
+                              : 'View best-selling products'}
+                          </button>
+                        )}
+                        {!s.is_acted_on && s.is_active && (
+                          <button
+                            onClick={() => handleMarkDone(s.id)}
+                            className="
+                              flex items-center gap-2
+                              bg-navy text-white
+                              px-4 py-2 rounded-lg
+                              text-sm hover:bg-navy-light
+                              transition-colors
+                            "
+                          >
+                            <MdCheckCircle size={16} />
+                            Mark as Done
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {salesSuggestionId === s.id && (
+                      <section
+                        aria-label="Best-selling products"
+                        className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4"
+                      >
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h5 className="font-semibold text-navy">
+                              Best-selling products
+                            </h5>
+                            <p className="text-xs text-gray-500">
+                              Ranked by units sold; revenue is shown for comparison.
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {[
+                              { label: 'Today', value: 'today' },
+                              { label: 'Last 7 days', value: '7d' },
+                            ].map((period) => (
+                              <button
+                                key={period.value}
+                                type="button"
+                                onClick={() => setSalesPeriod(period.value)}
+                                aria-pressed={salesPeriod === period.value}
+                                className={`rounded-lg px-3 py-2 text-sm ${
+                                  salesPeriod === period.value
+                                    ? 'bg-navy text-white'
+                                    : 'border border-gray-200 bg-white text-gray-600'
+                                }`}
+                              >
+                                {period.label}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={handleSyncStoreOrders}
+                              disabled={salesSyncing}
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-60"
+                            >
+                              {salesSyncing ? 'Syncing…' : 'Sync store orders'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {salesSyncMessage && (
+                          <p role="status" className="mb-3 text-sm text-green-700">
+                            {salesSyncMessage}
+                          </p>
+                        )}
+                        {salesError && (
+                          <p role="alert" className="mb-3 text-sm text-red-700">
+                            Could not load product sales: {salesError}
+                          </p>
+                        )}
+                        {salesLoading
+                          ? <p className="py-4 text-sm text-gray-500">Loading sales…</p>
+                          : salesData && (
+                            <>
+                              {salesData.orders_without_items > 0 && (
+                                <p className="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+                                  {salesData.orders_without_items} recorded order(s)
+                                  {' '}have no product details. Deploy the store and
+                                  analytics updates, then sync orders again to backfill them.
+                                </p>
+                              )}
+                              {salesData.products.length === 0
+                                ? (
+                                  <p className="py-4 text-sm text-gray-500">
+                                    No product sales with line-item details were recorded
+                                    for this period.
+                                  </p>
+                                )
+                                : (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
+                                      <thead className="text-xs uppercase text-gray-500">
+                                        <tr>
+                                          <th className="py-2 pr-4">Product</th>
+                                          <th className="py-2 pr-4">Units sold</th>
+                                          <th className="py-2 pr-4">Revenue</th>
+                                          <th className="py-2">Orders</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {salesData.products.slice(0, 10).map((product) => (
+                                          <tr
+                                            key={product.product_id}
+                                            className="border-t border-gray-200"
+                                          >
+                                            <td className="py-2 pr-4 font-medium text-gray-800">
+                                              {product.product_name}
+                                            </td>
+                                            <td className="py-2 pr-4">
+                                              {product.units_sold}
+                                            </td>
+                                            <td className="py-2 pr-4">
+                                              {formatPKR(product.revenue)}
+                                            </td>
+                                            <td className="py-2">{product.orders}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                            </>
+                          )}
+                      </section>
+                    )}
                   </div>
                 ))}
               </div>
